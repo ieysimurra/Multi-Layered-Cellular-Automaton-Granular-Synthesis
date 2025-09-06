@@ -256,9 +256,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Contact
 
-- **Author**: [Your Name]
-- **Email**: your.email@example.com
-- **GitHub**: [@your-username](https://github.com/your-username)
+- **Author**: [Ivan Eiji Simurra]
+- **Email**: ieysimurra@gmail.com
+- **GitHub**: [@ieysimurra](https://github.com/ieysimurra)
 
 ---
 
