@@ -3,16 +3,21 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.signal
 from scipy.signal import butter, sosfiltfilt
-from scipy.io.wavfile import write
-import librosa
 import io
 import tempfile
 import os
 import random
 import imageio
-from matplotlib.animation import FuncAnimation
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+
+# Try to import librosa, with fallback if not available
+try:
+    import librosa
+    LIBROSA_AVAILABLE = True
+except ImportError:
+    LIBROSA_AVAILABLE = False
+    st.warning("Librosa não disponível. Algumas funcionalidades de análise espectral estarão limitadas.")
 
 # Constants
 SAMPLE_RATE = 44100
@@ -85,11 +90,23 @@ class CAudioSynthesizer:
                 
             if len(audio_mono) < 1024:
                 return 0.5
+            
+            if LIBROSA_AVAILABLE:
+                centroid = librosa.feature.spectral_centroid(y=audio_mono, sr=SAMPLE_RATE)[0].mean()
+                normalized = (centroid - 60) / (6000 - 60)
+                return np.clip(normalized, 0, 1)
+            else:
+                # Fallback implementation without librosa
+                fft = np.fft.fft(audio_mono)
+                freqs = np.fft.fftfreq(len(audio_mono), 1/SAMPLE_RATE)
+                magnitude = np.abs(fft)
                 
-            centroid = librosa.feature.spectral_centroid(y=audio_mono, sr=SAMPLE_RATE)[0].mean()
-            normalized = (centroid - 60) / (6000 - 60)
-            return np.clip(normalized, 0, 1)
-        except:
+                # Calculate centroid manually
+                centroid = np.sum(freqs[:len(freqs)//2] * magnitude[:len(magnitude)//2]) / np.sum(magnitude[:len(magnitude)//2])
+                normalized = (centroid - 60) / (6000 - 60)
+                return np.clip(normalized, 0, 1)
+        except Exception as e:
+            st.warning(f"Error calculating spectral centroid: {e}")
             return 0.5
     
     def game_of_life_step(self, grid):
@@ -213,6 +230,31 @@ class CAudioSynthesizer:
             stereo_audio /= np.max(np.abs(stereo_audio))
         
         return stereo_audio
+
+def write_audio_to_bytes(audio_data, sample_rate=SAMPLE_RATE):
+    """Convert audio array to bytes for download"""
+    # Convert to int16 for WAV format
+    audio_int16 = (audio_data * 32767).astype(np.int16)
+    
+    # Create WAV file in memory
+    audio_buffer = io.BytesIO()
+    
+    # Simple WAV file creation (you might want to use a library for more robust WAV creation)
+    # For now, we'll use a basic approach
+    try:
+        import wave
+        with wave.open(audio_buffer, 'wb') as wav_file:
+            wav_file.setnchannels(2 if audio_data.ndim == 2 else 1)
+            wav_file.setsampwidth(2)  # 16-bit
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(audio_int16.tobytes())
+        
+        audio_buffer.seek(0)
+        return audio_buffer.getvalue()
+    except:
+        # Fallback if wave module has issues
+        st.error("Erro ao criar arquivo de áudio. Tente novamente.")
+        return None
 
 # Initialize synthesizer
 @st.cache_resource
@@ -358,57 +400,53 @@ with col_right:
         audio_data = synth.generated_audio
         
         # Create audio file in memory
-        audio_buffer = io.BytesIO()
+        audio_bytes = write_audio_to_bytes(audio_data)
         
-        # Convert to int16 for WAV format
-        audio_int16 = (audio_data * 32767).astype(np.int16)
-        write(audio_buffer, SAMPLE_RATE, audio_int16)
-        audio_buffer.seek(0)
-        
-        st.audio(audio_buffer.getvalue(), format='audio/wav')
-        
-        # Download button
-        st.download_button(
-            label="📥 Download Audio",
-            data=audio_buffer.getvalue(),
-            file_name=f"ca_audio_{ca_type.lower().replace(' ', '_')}.wav",
-            mime="audio/wav"
-        )
-        
-        # Audio analysis
-        st.subheader("📈 Audio Analysis")
-        
-        # Calculate spectral centroid
-        centroid = synth.calculate_spectral_centroid(audio_data)
-        st.metric("Spectral Centroid", f"{centroid:.3f}")
-        
-        # Show waveform
-        if audio_data.ndim == 2:
-            waveform_data = audio_data[:, 0]  # Left channel
-        else:
-            waveform_data = audio_data
+        if audio_bytes:
+            st.audio(audio_bytes, format='audio/wav')
             
-        # Sample for display (to avoid performance issues)
-        display_samples = min(len(waveform_data), 44100)  # 1 second max
-        sample_indices = np.linspace(0, len(waveform_data)-1, display_samples, dtype=int)
-        display_waveform = waveform_data[sample_indices]
-        time_axis = np.linspace(0, len(waveform_data)/SAMPLE_RATE, display_samples)
-        
-        fig_wave = go.Figure()
-        fig_wave.add_trace(go.Scatter(
-            x=time_axis,
-            y=display_waveform,
-            mode='lines',
-            name='Waveform',
-            line=dict(width=1)
-        ))
-        fig_wave.update_layout(
-            title="Audio Waveform",
-            xaxis_title="Time (s)",
-            yaxis_title="Amplitude",
-            height=300
-        )
-        st.plotly_chart(fig_wave, use_container_width=True)
+            # Download button
+            st.download_button(
+                label="📥 Download Audio",
+                data=audio_bytes,
+                file_name=f"ca_audio_{ca_type.lower().replace(' ', '_')}.wav",
+                mime="audio/wav"
+            )
+            
+            # Audio analysis
+            st.subheader("📈 Audio Analysis")
+            
+            # Calculate spectral centroid
+            centroid = synth.calculate_spectral_centroid(audio_data)
+            st.metric("Spectral Centroid", f"{centroid:.3f}")
+            
+            # Show waveform
+            if audio_data.ndim == 2:
+                waveform_data = audio_data[:, 0]  # Left channel
+            else:
+                waveform_data = audio_data
+                
+            # Sample for display (to avoid performance issues)
+            display_samples = min(len(waveform_data), 44100)  # 1 second max
+            sample_indices = np.linspace(0, len(waveform_data)-1, display_samples, dtype=int)
+            display_waveform = waveform_data[sample_indices]
+            time_axis = np.linspace(0, len(waveform_data)/SAMPLE_RATE, display_samples)
+            
+            fig_wave = go.Figure()
+            fig_wave.add_trace(go.Scatter(
+                x=time_axis,
+                y=display_waveform,
+                mode='lines',
+                name='Waveform',
+                line=dict(width=1)
+            ))
+            fig_wave.update_layout(
+                title="Audio Waveform",
+                xaxis_title="Time (s)",
+                yaxis_title="Amplitude",
+                height=300
+            )
+            st.plotly_chart(fig_wave, use_container_width=True)
         
     else:
         st.info("👆 Generate audio to see player and analysis")
