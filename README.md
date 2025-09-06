@@ -256,9 +256,9 @@ Este projeto está licenciado sob a Licença MIT - veja o arquivo [LICENSE](LICE
 
 ## 📞 Contato
 
-- **Autor**: [Seu Nome]
-- **Email**: seu.email@exemplo.com
-- **GitHub**: [@seu-usuario](https://github.com/seu-usuario)
+- **Autor**: [Ivan Eiji Simurra]
+- **Email**: ieysimurra@gmail.com
+- **GitHub**: [@ieysimurra](https://github.com/ieysimurra)
 
 ---
 
